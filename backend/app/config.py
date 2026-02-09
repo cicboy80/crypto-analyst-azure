@@ -1,0 +1,19 @@
+from pydantic_settings import BaseSettings
+from pydantic import ConfigDict
+from functools import lru_cache
+
+
+class Settings(BaseSettings):
+    model_config = ConfigDict(env_file=".env", env_file_encoding="utf-8")
+
+    openai_api_key: str = ""
+    serper_api_key: str = ""
+    coingecko_api_key: str = ""
+
+    # FastAPI
+    cors_origins: str = "http://localhost:5173,http://localhost:3000"
+
+
+@lru_cache
+def get_settings() -> Settings:
+    return Settings()
