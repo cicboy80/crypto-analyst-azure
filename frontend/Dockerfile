@@ -17,6 +17,6 @@ COPY nginx.conf.template /etc/nginx/templates/default.conf.template
 
 EXPOSE 80
 
-ENV BACKEND_URL=backend:8000
+ENV BACKEND_URL=http://backend:8000
 
 CMD ["/bin/sh", "-c", "envsubst '${BACKEND_URL}' < /etc/nginx/templates/default.conf.template > /etc/nginx/conf.d/default.conf && nginx -g 'daemon off;'"]
