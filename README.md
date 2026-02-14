@@ -2,6 +2,20 @@
 
 LangGraph-powered multi-agent cryptocurrency analysis system with a React dashboard, deployed on Azure Container Apps.
 
+## Overview
+
+Crypto Analyst Agent is a production-oriented, multi-agent analytics system that produces real-time cryptocurrency market intelligence by combining live market data, historical analysis, news-driven sentiment extraction, and LLM-based synthesis.
+
+The system is designed to demonstrate **agentic workflows**, **state-driven orchestration**, and **streaming AI outputs**, rather than single-prompt analysis.
+
+## Design Focus
+
+- Deterministic, state-driven agent orchestration using LangGraph
+- Progressive result streaming via Server-Sent Events (SSE)
+- Clear separation between data retrieval, analysis, and synthesis
+- Resilient external API integration with graceful degradation
+- Production-style frontend/backend separation
+
 ## Architecture
 
 ```
@@ -17,6 +31,8 @@ LangGraph-powered multi-agent cryptocurrency analysis system with a React dashbo
 
 ### Agent Pipeline (LangGraph sequential graph)
 
+Each node operates on a typed shared state, progressively enriching the analysis:
+
 ```
 User Input (crypto name, currency, lookback days)
   → Market Node (CoinGecko)        → live price, volume, market cap, 24h high/low
@@ -28,6 +44,8 @@ User Input (crypto name, currency, lookback days)
 ```
 
 ### Frontend Dashboard (3-column layout)
+
+The frontend is designed to surface *intermediate agent outputs* as well as final results, enabling transparency into the agent pipeline.
 
 - **Left sidebar**: Analysis form (crypto, currency, period, submit) + progress stepper
 - **Center**: Markdown report (Report/Debug tabs) + price chart (Recharts)
@@ -57,7 +75,7 @@ npm install
 npm run dev  # http://localhost:5173
 ```
 
-### Docker
+### Docker (Local)
 
 ```bash
 cp .env.example .env  # Fill in API keys
@@ -119,3 +137,11 @@ az containerapp secret set --name crypto-analyst-backend \
 - **Backend**: FastAPI, LangGraph, LangChain, OpenAI, Pydantic
 - **Frontend**: React 19, TypeScript, Vite, Tailwind CSS v4, shadcn/ui, Recharts
 - **Infrastructure**: Docker, nginx, Azure Container Apps, GitHub Actions
+
+## Intended Audience
+
+This project is intended for engineers interested in:
+- Agentic AI systems and multi-step LLM workflows
+- Streaming AI applications
+- Production deployment of LLM-backed services
+- Applied analytics systems beyond prompt-only demos
