@@ -1,7 +1,8 @@
 import os
-import requests
 import statistics
 from datetime import datetime, timezone
+
+from app.tools.http import session
 
 
 class HistoricalDataTool:
@@ -18,7 +19,7 @@ class HistoricalDataTool:
         params = {"vs_currency": currency, "days": days}
 
         try:
-            response = requests.get(
+            response = session.get(
                 url, params=params, headers=headers, timeout=10
             )
             response.raise_for_status()
@@ -46,12 +47,18 @@ class HistoricalDataTool:
             start_price = history[0]["price"]
             end_price = history[-1]["price"]
 
+            if start_price == 0:
+                return {
+                    "error": "Historical data contains a zero start price."
+                }
+
             pct_change = ((end_price - start_price) / start_price) * 100
 
             daily_returns = [
                 (history[i + 1]["price"] - history[i]["price"])
                 / history[i]["price"]
                 for i in range(len(history) - 1)
+                if history[i]["price"] != 0
             ]
 
             volatility = (

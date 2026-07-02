@@ -75,9 +75,10 @@ export interface StrategyData {
 
 export interface AnalysisState {
   status: "idle" | "running" | "completed" | "error";
-  currentStep: string | null;
-  stepsCompleted: number;
+  activeNodes: string[];
+  completedNodes: string[];
   threadId: string | null;
+  warnings: string[];
   marketData: MarketData | null;
   historicalData: HistoricalData | null;
   sentimentData: SentimentData | null;
@@ -89,13 +90,12 @@ export interface AnalysisState {
 
 export interface SSENodeStartEvent {
   node: string;
-  step: number;
   total_steps: number;
 }
 
 export interface SSENodeCompleteEvent {
   node: string;
-  step: number;
+  completed: number;
   total_steps: number;
   result: Record<string, unknown>;
 }
@@ -110,6 +110,7 @@ export interface SSECompleteEvent {
     strategy_data: StrategyData | null;
     report: string | null;
   };
+  errors?: string[];
 }
 
 export interface SSEErrorEvent {

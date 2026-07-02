@@ -1,5 +1,5 @@
 import responses
-import pytest
+
 from app.tools.historical_data_tool import HistoricalDataTool
 from tests.conftest import MOCK_COINGECKO_CHART
 
@@ -119,6 +119,45 @@ class TestHistoricalDataTool:
 
         result = self.tool.run(symbol="bitcoin", currency="usd", days=1)
         assert "error" in result
+
+    @responses.activate
+    def test_zero_start_price_returns_error(self):
+        chart = {
+            "prices": [
+                [1704067200000, 0.0],
+                [1704153600000, 1.0],
+                [1704240000000, 2.0],
+            ]
+        }
+        responses.add(
+            responses.GET,
+            "https://api.coingecko.com/api/v3/coins/bitcoin/market_chart",
+            json=chart,
+            status=200,
+        )
+
+        result = self.tool.run(symbol="bitcoin", currency="usd", days=3)
+        assert "error" in result
+
+    @responses.activate
+    def test_zero_intermediate_price_does_not_crash(self):
+        chart = {
+            "prices": [
+                [1704067200000, 100.0],
+                [1704153600000, 0.0],
+                [1704240000000, 120.0],
+            ]
+        }
+        responses.add(
+            responses.GET,
+            "https://api.coingecko.com/api/v3/coins/bitcoin/market_chart",
+            json=chart,
+            status=200,
+        )
+
+        result = self.tool.run(symbol="bitcoin", currency="usd", days=3)
+        assert "error" not in result
+        assert result["pct_change"] == 20.0
 
     @responses.activate
     def test_volatility_computation(self):

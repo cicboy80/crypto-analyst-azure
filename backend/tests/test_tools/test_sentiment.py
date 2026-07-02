@@ -1,10 +1,10 @@
 import json
+from unittest.mock import MagicMock, patch
+
 import responses
-import pytest
-from unittest.mock import patch, MagicMock
 
 from app.tools.sentiment_tool import SentimentTool
-from tests.conftest import MOCK_SERPER_NEWS, MOCK_SENTIMENT_LLM
+from tests.conftest import MOCK_SENTIMENT_LLM, MOCK_SERPER_NEWS
 
 
 class TestSentimentTool:
@@ -114,6 +114,83 @@ class TestSentimentTool:
             result = self.tool.run(query="bitcoin")
 
         assert result["sentiment"] == "bullish"
+
+    @patch("app.tools.sentiment_tool.OpenAI")
+    def test_empty_headlines_skips_llm(self, mock_openai_cls):
+        result = self.tool._analyze_with_llm("bitcoin", [])
+        assert result["sentiment"] == "neutral"
+        assert result["confidence"] == 0.0
+        mock_openai_cls.return_value.chat.completions.create.assert_not_called()
+
+    @responses.activate
+    @patch.dict("os.environ", {"OPENAI_API_KEY": "test", "SERPER_API_KEY": "test"})
+    def test_serper_failure_returns_neutral_with_reason(self):
+        responses.add(
+            responses.POST,
+            "https://google.serper.dev/news",
+            body=ConnectionError("network down"),
+        )
+
+        result = self.tool.run(query="bitcoin")
+        assert result["sentiment"] == "neutral"
+        assert "No news available" in result["reasoning"]
+
+    @responses.activate
+    @patch("app.tools.sentiment_tool.OpenAI")
+    def test_llm_exception_returns_neutral_with_headlines(self, mock_openai_cls):
+        responses.add(
+            responses.POST,
+            "https://google.serper.dev/news",
+            json=MOCK_SERPER_NEWS,
+            status=200,
+        )
+        mock_client = MagicMock()
+        mock_client.chat.completions.create.side_effect = RuntimeError("LLM down")
+        mock_openai_cls.return_value = mock_client
+
+        with patch.dict("os.environ", {"OPENAI_API_KEY": "test", "SERPER_API_KEY": "test"}):
+            result = self.tool.run(query="bitcoin")
+
+        assert result["sentiment"] == "neutral"
+        assert "LLM sentiment failure" in result["reasoning"]
+        # Headlines fetched before the failure are still surfaced
+        assert len(result["news_headlines"]) > 0
+
+    @responses.activate
+    @patch("app.tools.sentiment_tool.OpenAI")
+    def test_type_coercion_fallbacks(self, mock_openai_cls):
+        """Non-numeric strength, non-list themes/headlines fall back safely."""
+        responses.add(
+            responses.POST,
+            "https://google.serper.dev/news",
+            json=MOCK_SERPER_NEWS,
+            status=200,
+        )
+        bad_response = {
+            "sentiment": "bullish",
+            "sentiment_strength": "high",  # not a number
+            "confidence": None,
+            "reasoning": "test",
+            "news_headlines": "not-a-list",
+            "themes": {"also": "not-a-list"},
+        }
+        mock_completion = MagicMock()
+        mock_completion.choices = [
+            MagicMock(message=MagicMock(content=json.dumps(bad_response)))
+        ]
+        mock_client = MagicMock()
+        mock_client.chat.completions.create.return_value = mock_completion
+        mock_openai_cls.return_value = mock_client
+
+        with patch.dict("os.environ", {"OPENAI_API_KEY": "test", "SERPER_API_KEY": "test"}):
+            result = self.tool.run(query="bitcoin")
+
+        assert result["sentiment_strength"] == 0.0
+        assert result["confidence"] == 0.0
+        assert result["themes"] == []
+        # Falls back to the fetched headlines
+        assert isinstance(result["news_headlines"], list)
+        assert MOCK_SERPER_NEWS["news"][0]["title"] in result["news_headlines"]
 
     @responses.activate
     @patch("app.tools.sentiment_tool.OpenAI")

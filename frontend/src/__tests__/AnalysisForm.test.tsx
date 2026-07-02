@@ -6,8 +6,8 @@ describe("AnalysisForm", () => {
   const defaultProps = {
     onSubmit: vi.fn(),
     isRunning: false,
-    currentStep: null,
-    stepsCompleted: 0,
+    activeNodes: [],
+    completedNodes: [],
   };
 
   it("renders form inputs", () => {
@@ -46,8 +46,8 @@ describe("AnalysisForm", () => {
       <AnalysisForm
         {...defaultProps}
         isRunning={true}
-        currentStep="market"
-        stepsCompleted={0}
+        activeNodes={["market"]}
+        completedNodes={[]}
       />
     );
 

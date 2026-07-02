@@ -24,15 +24,15 @@ const CURRENCIES = [
 interface AnalysisFormProps {
   onSubmit: (request: AnalysisRequest) => void;
   isRunning: boolean;
-  currentStep: string | null;
-  stepsCompleted: number;
+  activeNodes: string[];
+  completedNodes: string[];
 }
 
 export function AnalysisForm({
   onSubmit,
   isRunning,
-  currentStep,
-  stepsCompleted,
+  activeNodes,
+  completedNodes,
 }: AnalysisFormProps) {
   const [crypto, setCrypto] = useState("bitcoin");
   const [currency, setCurrency] = useState("usd");
@@ -136,8 +136,8 @@ export function AnalysisForm({
         {isRunning && (
           <div className="mt-4 border-t border-slate-800 pt-4">
             <ProgressTracker
-              currentStep={currentStep}
-              stepsCompleted={stepsCompleted}
+              activeNodes={activeNodes}
+              completedNodes={completedNodes}
             />
           </div>
         )}

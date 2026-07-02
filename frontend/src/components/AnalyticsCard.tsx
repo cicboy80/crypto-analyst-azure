@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
@@ -24,7 +25,7 @@ function scoreColor(value: number): string {
   return "bg-red-500";
 }
 
-export function AnalyticsCard({ data }: AnalyticsCardProps) {
+export const AnalyticsCard = memo(function AnalyticsCard({ data }: AnalyticsCardProps) {
   if (!data) return null;
 
   const subScores = [
@@ -83,4 +84,4 @@ export function AnalyticsCard({ data }: AnalyticsCardProps) {
       </CardContent>
     </Card>
   );
-}
+});

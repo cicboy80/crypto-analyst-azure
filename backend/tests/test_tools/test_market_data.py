@@ -1,7 +1,12 @@
+import copy
+
+import requests
 import responses
-import pytest
+
 from app.tools.market_data import MarketDataTool
-from tests.conftest import MOCK_COINGECKO_PRICE, MOCK_COINGECKO_COIN
+from tests.conftest import MOCK_COINGECKO_COIN
+
+COIN_URL = "https://api.coingecko.com/api/v3/coins/bitcoin"
 
 
 class TestMarketDataTool:
@@ -11,16 +16,7 @@ class TestMarketDataTool:
     @responses.activate
     def test_returns_price_and_volume(self):
         responses.add(
-            responses.GET,
-            "https://api.coingecko.com/api/v3/simple/price",
-            json=MOCK_COINGECKO_PRICE,
-            status=200,
-        )
-        responses.add(
-            responses.GET,
-            "https://api.coingecko.com/api/v3/coins/bitcoin",
-            json=MOCK_COINGECKO_COIN,
-            status=200,
+            responses.GET, COIN_URL, json=MOCK_COINGECKO_COIN, status=200
         )
 
         result = self.tool.run(symbol="bitcoin", currency="usd")
@@ -33,16 +29,7 @@ class TestMarketDataTool:
     @responses.activate
     def test_returns_extended_fields(self):
         responses.add(
-            responses.GET,
-            "https://api.coingecko.com/api/v3/simple/price",
-            json=MOCK_COINGECKO_PRICE,
-            status=200,
-        )
-        responses.add(
-            responses.GET,
-            "https://api.coingecko.com/api/v3/coins/bitcoin",
-            json=MOCK_COINGECKO_COIN,
-            status=200,
+            responses.GET, COIN_URL, json=MOCK_COINGECKO_COIN, status=200
         )
 
         result = self.tool.run(symbol="bitcoin", currency="usd")
@@ -56,13 +43,29 @@ class TestMarketDataTool:
         assert result["name"] == "Bitcoin"
 
     @responses.activate
-    def test_missing_symbol_returns_error(self):
-        responses.add(
-            responses.GET,
-            "https://api.coingecko.com/api/v3/simple/price",
-            json={"notbitcoin": {}},
-            status=200,
-        )
+    def test_zero_change_is_preserved_not_none(self):
+        """A legitimate 0.0 24h change must not be coerced to None."""
+        coin = copy.deepcopy(MOCK_COINGECKO_COIN)
+        coin["market_data"]["price_change_percentage_24h_in_currency"]["usd"] = 0.0
+        responses.add(responses.GET, COIN_URL, json=coin, status=200)
+
+        result = self.tool.run(symbol="bitcoin", currency="usd")
+        assert result["change_24h_pct"] == 0.0
+
+    @responses.activate
+    def test_missing_change_returns_none(self):
+        coin = copy.deepcopy(MOCK_COINGECKO_COIN)
+        del coin["market_data"]["price_change_percentage_24h_in_currency"]
+        responses.add(responses.GET, COIN_URL, json=coin, status=200)
+
+        result = self.tool.run(symbol="bitcoin", currency="usd")
+        assert result["change_24h_pct"] is None
+
+    @responses.activate
+    def test_missing_price_returns_error(self):
+        coin = copy.deepcopy(MOCK_COINGECKO_COIN)
+        coin["market_data"]["current_price"] = {}
+        responses.add(responses.GET, COIN_URL, json=coin, status=200)
 
         result = self.tool.run(symbol="bitcoin", currency="usd")
         assert "error" in result
@@ -70,9 +73,7 @@ class TestMarketDataTool:
     @responses.activate
     def test_timeout_returns_error(self):
         responses.add(
-            responses.GET,
-            "https://api.coingecko.com/api/v3/simple/price",
-            body=ConnectionError("timeout"),
+            responses.GET, COIN_URL, body=requests.Timeout("timed out")
         )
 
         result = self.tool.run(symbol="bitcoin", currency="usd")
@@ -80,31 +81,17 @@ class TestMarketDataTool:
         assert "failed" in result["error"].lower()
 
     @responses.activate
-    def test_bad_response_returns_error(self):
+    def test_connection_error_returns_error(self):
         responses.add(
-            responses.GET,
-            "https://api.coingecko.com/api/v3/simple/price",
-            status=500,
+            responses.GET, COIN_URL, body=ConnectionError("refused")
         )
 
         result = self.tool.run(symbol="bitcoin", currency="usd")
         assert "error" in result
 
     @responses.activate
-    def test_coin_details_failure_still_returns_price(self):
-        """If /coins/{id} fails, we still get price + volume."""
-        responses.add(
-            responses.GET,
-            "https://api.coingecko.com/api/v3/simple/price",
-            json=MOCK_COINGECKO_PRICE,
-            status=200,
-        )
-        responses.add(
-            responses.GET,
-            "https://api.coingecko.com/api/v3/coins/bitcoin",
-            status=500,
-        )
+    def test_bad_response_returns_error(self):
+        responses.add(responses.GET, COIN_URL, status=500)
 
         result = self.tool.run(symbol="bitcoin", currency="usd")
-        assert result["latest_price"] == 69114
-        assert result["high_24h"] is None  # Graceful fallback
+        assert "error" in result

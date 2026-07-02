@@ -11,20 +11,19 @@ const STEPS = [
 ];
 
 interface ProgressTrackerProps {
-  currentStep: string | null;
-  stepsCompleted: number;
+  activeNodes: string[];
+  completedNodes: string[];
 }
 
 export function ProgressTracker({
-  currentStep,
-  stepsCompleted,
+  activeNodes,
+  completedNodes,
 }: ProgressTrackerProps) {
   return (
     <div className="space-y-2">
-      {STEPS.map((step, i) => {
-        const stepNum = i + 1;
-        const isCompleted = stepsCompleted >= stepNum;
-        const isActive = currentStep === step.key && !isCompleted;
+      {STEPS.map((step) => {
+        const isCompleted = completedNodes.includes(step.key);
+        const isActive = activeNodes.includes(step.key) && !isCompleted;
 
         return (
           <div key={step.key} className="flex items-center gap-2.5">

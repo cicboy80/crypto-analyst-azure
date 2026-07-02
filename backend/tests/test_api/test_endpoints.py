@@ -1,7 +1,5 @@
-import json
 import pytest
-from unittest.mock import patch, MagicMock, AsyncMock
-from httpx import AsyncClient, ASGITransport
+from httpx import ASGITransport, AsyncClient
 
 from app.main import app
 
@@ -81,37 +79,20 @@ class TestAnalysisEndpoints:
         assert data["status"] == "pending"
 
     @pytest.mark.anyio
-    async def test_stream_endpoint_returns_sse(self, client):
-        # Start analysis to create a job
+    async def test_stream_unknown_thread_returns_404(self, client):
+        resp = await client.get("/api/analysis/nonexistent-id/stream")
+        assert resp.status_code == 404
+
+    @pytest.mark.anyio
+    async def test_stream_running_job_returns_409(self, client):
+        from app.services.job_manager import job_manager
+
         start_resp = await client.post(
             "/api/analysis",
             json={"crypto_name": "bitcoin", "currency": "usd", "days": 30},
         )
         thread_id = start_resp.json()["thread_id"]
+        job_manager.update(thread_id, status="running")
 
-        # The stream endpoint should return text/event-stream content type
-        # We just verify the endpoint is reachable (full SSE testing needs mock pipeline)
-        with patch("app.routers.analysis.compiled_graph") as mock_graph:
-            # Mock astream_events to return empty async iterator
-            async def empty_stream(*args, **kwargs):
-                return
-                yield  # make it an async generator
-
-            mock_graph.astream_events = empty_stream
-            mock_graph.get_state.return_value = MagicMock(
-                values={
-                    "market_data": None,
-                    "historical_data": None,
-                    "sentiment_data": None,
-                    "analytics_data": None,
-                    "strategy_data": None,
-                    "report": None,
-                }
-            )
-
-            resp = await client.get(
-                f"/api/analysis/{thread_id}/stream",
-                params={"crypto_name": "bitcoin", "currency": "usd", "days": "30"},
-            )
-            assert resp.status_code == 200
-            assert "text/event-stream" in resp.headers["content-type"]
+        resp = await client.get(f"/api/analysis/{thread_id}/stream")
+        assert resp.status_code == 409

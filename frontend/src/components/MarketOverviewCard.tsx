@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { TrendingUp, TrendingDown } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -8,7 +9,7 @@ interface MarketOverviewCardProps {
   data: MarketData | null;
 }
 
-export function MarketOverviewCard({ data }: MarketOverviewCardProps) {
+export const MarketOverviewCard = memo(function MarketOverviewCard({ data }: MarketOverviewCardProps) {
   if (!data) return null;
 
   const isPositive = (data.change_24h_pct ?? 0) >= 0;
@@ -81,4 +82,4 @@ export function MarketOverviewCard({ data }: MarketOverviewCardProps) {
       </CardContent>
     </Card>
   );
-}
+});

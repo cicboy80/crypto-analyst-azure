@@ -1,13 +1,14 @@
 import json
 import os
+
 from openai import OpenAI
 
-from app.tools.market_data import MarketDataTool
-from app.tools.historical_data_tool import HistoricalDataTool
-from app.tools.sentiment_tool import SentimentTool
-from app.tools.analytics_tool import AnalyticsTool
 from app.graph.state import AnalysisState
-
+from app.tools.analytics_tool import AnalyticsTool
+from app.tools.historical_data_tool import HistoricalDataTool
+from app.tools.json_utils import extract_json
+from app.tools.market_data import MarketDataTool
+from app.tools.sentiment_tool import SentimentTool
 
 NODE_NAMES = [
     "market",
@@ -20,7 +21,21 @@ NODE_NAMES = [
 
 
 def _get_openai_client() -> OpenAI:
-    return OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+    return OpenAI(api_key=os.getenv("OPENAI_API_KEY"), timeout=60.0, max_retries=2)
+
+
+def has_fatal_error(state: AnalysisState) -> bool:
+    """True when a required upstream node failed and LLM stages should be skipped.
+
+    Sentiment failure is non-fatal (the tool falls back to neutral)."""
+    market = state.get("market_data") or {}
+    historical = state.get("historical_data") or {}
+    analytics = state.get("analytics_data") or {}
+    return (
+        ("error" in market and "latest_price" not in market)
+        or ("error" in historical and "price_history" not in historical)
+        or ("error" in analytics and "composite_score" not in analytics)
+    )
 
 
 # ── Node 1: Market Data ──────────────────────────────────────────────
@@ -33,9 +48,9 @@ def market_node(state: AnalysisState) -> dict:
     )
 
     if "error" in result and "latest_price" not in result:
-        return {"market_data": result, "current_step": "market", "error": result["error"]}
+        return {"market_data": result, "errors": [f"market: {result['error']}"]}
 
-    return {"market_data": result, "current_step": "market"}
+    return {"market_data": result}
 
 
 # ── Node 2: Historical Data ──────────────────────────────────────────
@@ -49,9 +64,9 @@ def historical_node(state: AnalysisState) -> dict:
     )
 
     if "error" in result and "price_history" not in result:
-        return {"historical_data": result, "current_step": "historical", "error": result["error"]}
+        return {"historical_data": result, "errors": [f"historical: {result['error']}"]}
 
-    return {"historical_data": result, "current_step": "historical"}
+    return {"historical_data": result}
 
 
 # ── Node 3: Sentiment Analysis ───────────────────────────────────────
@@ -59,7 +74,7 @@ def historical_node(state: AnalysisState) -> dict:
 def sentiment_node(state: AnalysisState) -> dict:
     tool = SentimentTool()
     result = tool.run(query=state["crypto_name"])
-    return {"sentiment_data": result, "current_step": "sentiment"}
+    return {"sentiment_data": result}
 
 
 # ── Node 4: Analytics ────────────────────────────────────────────────
@@ -73,9 +88,9 @@ def analytics_node(state: AnalysisState) -> dict:
     )
 
     if "error" in result and "composite_score" not in result:
-        return {"analytics_data": result, "current_step": "analytics", "error": result["error"]}
+        return {"analytics_data": result, "errors": [f"analytics: {result['error']}"]}
 
-    return {"analytics_data": result, "current_step": "analytics"}
+    return {"analytics_data": result}
 
 
 # ── Node 5: Strategy ─────────────────────────────────────────────────
@@ -122,6 +137,7 @@ Rules:
         completion = client.chat.completions.create(
             model="gpt-4.1",
             temperature=0.3,
+            response_format={"type": "json_object"},
             messages=[
                 {
                     "role": "system",
@@ -135,16 +151,9 @@ Rules:
         )
 
         raw = completion.choices[0].message.content.strip()
+        strategy = extract_json(raw)
 
-        try:
-            strategy = json.loads(raw)
-        except json.JSONDecodeError:
-            start, end = raw.find("{"), raw.rfind("}")
-            if start == -1 or end == -1:
-                raise ValueError("No JSON found in strategy output.")
-            strategy = json.loads(raw[start : end + 1])
-
-        return {"strategy_data": strategy, "current_step": "strategy"}
+        return {"strategy_data": strategy}
 
     except Exception as e:
         return {
@@ -156,7 +165,7 @@ Rules:
                 "rationale": f"Strategy generation failed: {str(e)}",
                 "key_factors": [],
             },
-            "current_step": "strategy",
+            "errors": [f"strategy: {e}"],
         }
 
 
@@ -228,11 +237,10 @@ IMPORTANT: Do NOT output bullet points or lists. Use flowing paragraphs."""
         )
 
         report_text = completion.choices[0].message.content.strip()
-        return {"report": report_text, "current_step": "report"}
+        return {"report": report_text}
 
     except Exception as e:
         return {
             "report": f"## Error\n\nReport generation failed: {str(e)}",
-            "current_step": "report",
-            "error": str(e),
+            "errors": [f"report: {e}"],
         }

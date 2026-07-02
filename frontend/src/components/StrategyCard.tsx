@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { Shield, Clock } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -29,7 +30,7 @@ function riskColor(risk: string) {
   }
 }
 
-export function StrategyCard({ data }: StrategyCardProps) {
+export const StrategyCard = memo(function StrategyCard({ data }: StrategyCardProps) {
   if (!data) return null;
 
   return (
@@ -93,4 +94,4 @@ export function StrategyCard({ data }: StrategyCardProps) {
       </CardContent>
     </Card>
   );
-}
+});

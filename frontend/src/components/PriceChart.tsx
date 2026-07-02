@@ -1,3 +1,4 @@
+import { memo, useMemo } from "react";
 import {
   AreaChart,
   Area,
@@ -14,15 +15,18 @@ interface PriceChartProps {
   currency?: string;
 }
 
-export function PriceChart({
+export const PriceChart = memo(function PriceChart({
   priceHistory,
   currency = "usd",
 }: PriceChartProps) {
-  if (!priceHistory || priceHistory.length === 0) return null;
-
   // Thin data to max ~100 points for performance
-  const step = Math.max(1, Math.floor(priceHistory.length / 100));
-  const data = priceHistory.filter((_, i) => i % step === 0);
+  const data = useMemo(() => {
+    if (!priceHistory) return [];
+    const step = Math.max(1, Math.floor(priceHistory.length / 100));
+    return priceHistory.filter((_, i) => i % step === 0);
+  }, [priceHistory]);
+
+  if (data.length === 0) return null;
 
   return (
     <Card>
@@ -80,4 +84,4 @@ export function PriceChart({
       </CardContent>
     </Card>
   );
-}
+});

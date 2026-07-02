@@ -1,13 +1,10 @@
 import os
-import json
-import requests
-from typing import List, Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from openai import OpenAI
 
-
-SERPER_API_KEY = os.getenv("SERPER_API_KEY")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+from app.tools.http import session
+from app.tools.json_utils import extract_json
 
 
 class SentimentTool:
@@ -29,7 +26,7 @@ class SentimentTool:
         payload = {"q": f"{query} cryptocurrency", "num": max_results}
 
         try:
-            resp = requests.post(
+            resp = session.post(
                 url, headers=headers, json=payload, timeout=10
             )
             resp.raise_for_status()
@@ -54,7 +51,9 @@ class SentimentTool:
     def _analyze_with_llm(
         self, coin: str, headlines: List[str]
     ) -> Dict[str, Any]:
-        client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        client = OpenAI(
+            api_key=os.getenv("OPENAI_API_KEY"), timeout=60.0, max_retries=2
+        )
 
         if not headlines:
             return {
@@ -99,6 +98,7 @@ Rules:
             completion = client.chat.completions.create(
                 model="gpt-4.1",
                 temperature=0.2,
+                response_format={"type": "json_object"},
                 messages=[
                     {
                         "role": "system",
@@ -109,14 +109,7 @@ Rules:
             )
 
             raw = completion.choices[0].message.content.strip()
-
-            try:
-                parsed = json.loads(raw)
-            except json.JSONDecodeError:
-                start, end = raw.find("{"), raw.rfind("}")
-                if start == -1 or end == -1:
-                    raise ValueError("No JSON found in model output.")
-                parsed = json.loads(raw[start : end + 1])
+            parsed = extract_json(raw)
 
             sentiment = parsed.get("sentiment", "neutral").lower()
             if sentiment not in {"bullish", "bearish", "neutral"}:

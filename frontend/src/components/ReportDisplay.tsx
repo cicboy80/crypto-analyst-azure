@@ -1,7 +1,7 @@
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { FileText, Code, Copy, Check } from "lucide-react";
-import { useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 
@@ -10,14 +10,30 @@ interface ReportDisplayProps {
   debugData: Record<string, unknown> | null;
 }
 
-export function ReportDisplay({ report, debugData }: ReportDisplayProps) {
+export const ReportDisplay = memo(function ReportDisplay({
+  report,
+  debugData,
+}: ReportDisplayProps) {
   const [copied, setCopied] = useState(false);
+  const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(
+    () => () => {
+      if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current);
+    },
+    []
+  );
 
   async function handleCopy() {
     if (!report) return;
-    await navigator.clipboard.writeText(report);
+    try {
+      await navigator.clipboard.writeText(report);
+    } catch {
+      return;
+    }
     setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current);
+    copyTimeoutRef.current = setTimeout(() => setCopied(false), 2000);
   }
 
   if (!report && !debugData) {
@@ -93,4 +109,4 @@ export function ReportDisplay({ report, debugData }: ReportDisplayProps) {
       </CardContent>
     </Card>
   );
-}
+});

@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
@@ -18,7 +19,7 @@ function sentimentVariant(sentiment: string) {
   }
 }
 
-export function SentimentCard({ data }: SentimentCardProps) {
+export const SentimentCard = memo(function SentimentCard({ data }: SentimentCardProps) {
   if (!data) return null;
 
   // Map strength from [-1, 1] to [0, 100] for the progress bar
@@ -92,4 +93,4 @@ export function SentimentCard({ data }: SentimentCardProps) {
       </CardContent>
     </Card>
   );
-}
+});

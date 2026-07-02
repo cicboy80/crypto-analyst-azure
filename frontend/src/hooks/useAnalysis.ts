@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { startAnalysis, createAnalysisStream } from "@/api/client";
 import type {
   AnalysisRequest,
@@ -14,11 +14,21 @@ import type {
   SSEErrorEvent,
 } from "@/types";
 
+export const NODE_NAMES = [
+  "market",
+  "historical",
+  "sentiment",
+  "analytics",
+  "strategy",
+  "report",
+];
+
 const INITIAL_STATE: AnalysisState = {
   status: "idle",
-  currentStep: null,
-  stepsCompleted: 0,
+  activeNodes: [],
+  completedNodes: [],
   threadId: null,
+  warnings: [],
   marketData: null,
   historicalData: null,
   sentimentData: null,
@@ -28,9 +38,18 @@ const INITIAL_STATE: AnalysisState = {
   error: null,
 };
 
+function safeParse<T>(raw: string): T | null {
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    return null;
+  }
+}
+
 export function useAnalysis() {
   const [state, setState] = useState<AnalysisState>(INITIAL_STATE);
   const eventSourceRef = useRef<EventSource | null>(null);
+  const runIdRef = useRef(0);
 
   const cleanup = useCallback(() => {
     if (eventSourceRef.current) {
@@ -39,8 +58,12 @@ export function useAnalysis() {
     }
   }, []);
 
+  // Close the stream when the consuming component unmounts
+  useEffect(() => cleanup, [cleanup]);
+
   const runAnalysis = useCallback(
     async (request: AnalysisRequest) => {
+      const runId = ++runIdRef.current;
       cleanup();
 
       setState({
@@ -50,25 +73,35 @@ export function useAnalysis() {
 
       try {
         const threadId = await startAnalysis(request);
+        // A newer run started while the POST was in flight — abandon this one
+        if (runIdRef.current !== runId) return;
+
         setState((prev) => ({ ...prev, threadId }));
 
-        const es = createAnalysisStream(threadId, request);
+        const es = createAnalysisStream(threadId);
         eventSourceRef.current = es;
 
         es.addEventListener("node_start", (e: MessageEvent) => {
-          const data: SSENodeStartEvent = JSON.parse(e.data);
+          const data = safeParse<SSENodeStartEvent>(e.data);
+          if (!data) return;
           setState((prev) => ({
             ...prev,
-            currentStep: data.node,
+            activeNodes: prev.activeNodes.includes(data.node)
+              ? prev.activeNodes
+              : [...prev.activeNodes, data.node],
           }));
         });
 
         es.addEventListener("node_complete", (e: MessageEvent) => {
-          const data: SSENodeCompleteEvent = JSON.parse(e.data);
+          const data = safeParse<SSENodeCompleteEvent>(e.data);
+          if (!data) return;
 
           setState((prev) => {
             const updates: Partial<AnalysisState> = {
-              stepsCompleted: data.step,
+              activeNodes: prev.activeNodes.filter((n) => n !== data.node),
+              completedNodes: prev.completedNodes.includes(data.node)
+                ? prev.completedNodes
+                : [...prev.completedNodes, data.node],
             };
 
             switch (data.node) {
@@ -103,13 +136,16 @@ export function useAnalysis() {
         });
 
         es.addEventListener("complete", (e: MessageEvent) => {
-          const data: SSECompleteEvent = JSON.parse(e.data);
+          const data = safeParse<SSECompleteEvent>(e.data);
+          if (!data) return;
 
           setState((prev) => ({
             ...prev,
             status: "completed",
             report: data.report,
-            stepsCompleted: 6,
+            activeNodes: [],
+            completedNodes: NODE_NAMES,
+            warnings: data.errors ?? [],
             // Backfill full historical data (with price_history) from the complete event
             historicalData:
               (data.all_data
@@ -120,37 +156,27 @@ export function useAnalysis() {
           cleanup();
         });
 
-        es.addEventListener("error", (e: MessageEvent) => {
-          let errorMsg = "Analysis failed";
-          try {
-            const data: SSEErrorEvent = JSON.parse(e.data);
-            errorMsg = data.error;
-          } catch {
-            // SSE connection error (no JSON body)
-          }
+        // Handles both server-sent `event: error` frames (which carry JSON
+        // data) and native EventSource connection errors (which don't)
+        es.addEventListener("error", (e: Event) => {
+          const raw = (e as MessageEvent).data;
+          const parsed =
+            typeof raw === "string" ? safeParse<SSEErrorEvent>(raw) : null;
 
-          setState((prev) => ({
-            ...prev,
-            status: "error",
-            error: errorMsg,
-          }));
-
-          cleanup();
-        });
-
-        es.onerror = () => {
-          // Only treat as error if we haven't completed
           setState((prev) => {
-            if (prev.status === "completed") return prev;
+            // A connection drop after normal completion is not an error
+            if (!parsed && prev.status === "completed") return prev;
             return {
               ...prev,
               status: "error",
-              error: "Connection to analysis server lost",
+              error: parsed?.error ?? "Connection to analysis server lost",
             };
           });
+
           cleanup();
-        };
+        });
       } catch (err) {
+        if (runIdRef.current !== runId) return;
         setState((prev) => ({
           ...prev,
           status: "error",
@@ -162,6 +188,7 @@ export function useAnalysis() {
   );
 
   const reset = useCallback(() => {
+    runIdRef.current++;
     cleanup();
     setState(INITIAL_STATE);
   }, [cleanup]);

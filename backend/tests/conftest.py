@@ -1,15 +1,15 @@
 import pytest
-from unittest.mock import patch
 
-# Mock market data response from CoinGecko /simple/price
-MOCK_COINGECKO_PRICE = {
-    "bitcoin": {
-        "usd": 69114,
-        "usd_24h_vol": 47530000000,
-        "usd_market_cap": 1382130000000,
-        "usd_24h_change": 2.45,
-    }
-}
+from app.services.job_manager import job_manager
+
+
+@pytest.fixture(autouse=True)
+def _clean_job_manager():
+    """Keep the module-level job_manager singleton isolated between tests."""
+    job_manager.clear()
+    yield
+    job_manager.clear()
+
 
 # Mock coin details from CoinGecko /coins/{id}
 MOCK_COINGECKO_COIN = {
@@ -17,6 +17,10 @@ MOCK_COINGECKO_COIN = {
     "market_cap_rank": 1,
     "image": {"small": "https://example.com/btc.png"},
     "market_data": {
+        "current_price": {"usd": 69114},
+        "total_volume": {"usd": 47530000000},
+        "market_cap": {"usd": 1382130000000},
+        "price_change_percentage_24h_in_currency": {"usd": 2.45},
         "high_24h": {"usd": 71850},
         "low_24h": {"usd": 68480},
         "circulating_supply": 19500000,

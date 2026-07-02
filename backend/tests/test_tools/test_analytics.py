@@ -1,5 +1,3 @@
-import math
-import pytest
 from app.tools.analytics_tool import AnalyticsTool
 
 
@@ -7,36 +5,56 @@ class TestAnalyticsTool:
     def setup_method(self):
         self.tool = AnalyticsTool()
 
-    def test_composite_score_formula(
+    def test_composite_score_clips_at_one(
         self, mock_market_data, mock_historical_data, mock_sentiment_data
     ):
+        """Standard bullish fixture, hand-computed:
+        eff = 0.65 * 0.78 = 0.507
+        momentum = 8.33/10 + 0.507*1.5 - 1.42/100 = 1.579 → clipped to 1.0
+        no drop → contrarian boost 0 → composite exactly 1.0."""
         result = self.tool.run(
             market_data=mock_market_data,
             historical_data=mock_historical_data,
             sentiment_data=mock_sentiment_data,
         )
 
-        assert "composite_score" in result
-        assert -1 <= result["composite_score"] <= 1
+        assert result["composite_score"] == 1.0
+        assert result["overall_score"] == 100
+        assert result["signal"] == "buy"
 
-        # Verify two-stage formula: momentum + contrarian boost
-        pct = mock_historical_data["pct_change"]
-        strength = mock_sentiment_data["sentiment_strength"]
-        conf = mock_sentiment_data["confidence"]
-        vol = mock_historical_data["volatility_pct"]
-        eff = strength * conf
+    def test_composite_score_mid_range(self, mock_market_data):
+        """Non-clipping fixture, hand-computed:
+        eff = 0.4 * 0.5 = 0.2
+        momentum = 2.0/10 + 0.2*1.5 - 3.0/100 = 0.2 + 0.3 - 0.03 = 0.47
+        no drop → contrarian 0 → composite 0.47, overall int(1.47*50) = 73."""
+        historical = {
+            "pct_change": 2.0,
+            "volatility_pct": 3.0,
+            "trend": "sideways",
+        }
+        sentiment = {
+            "sentiment": "bullish",
+            "sentiment_strength": 0.4,
+            "confidence": 0.5,
+            "news_headlines": [],
+            "themes": [],
+        }
 
-        momentum = (pct / 10) + (eff * 1.5) - (vol / 100)
-        momentum = max(-1, min(1, momentum))
+        result = self.tool.run(
+            market_data=mock_market_data,
+            historical_data=historical,
+            sentiment_data=sentiment,
+        )
 
-        # Bullish data → contrarian_boost = 0
-        price_oversold = max(0, min(1, (-pct - 5) / 25))
-        fear_level = max(0, min(1, -eff / 0.7))
-        contrarian_raw = math.sqrt(price_oversold * fear_level)
-        contrarian_boost = contrarian_raw * 0.6
-
-        expected = round(max(-1, min(1, momentum + contrarian_boost)), 2)
-        assert result["composite_score"] == expected
+        assert result["composite_score"] == 0.47
+        assert result["overall_score"] == 73
+        assert result["effective_sentiment"] == 0.2
+        # market fixture has change_24h_pct 2.45 → int(50 + 2.45*2.5) = 56
+        assert result["market_score"] == 56
+        # 50 + 2.0*1.5 - min(30, 3.0*5) = 50 + 3 - 15 = 38
+        assert result["trend_score"] == 38
+        # 50 + 0.2*50 = 60
+        assert result["sentiment_score"] == 60
 
     def test_alignment_aligned(
         self, mock_market_data, mock_historical_data, mock_sentiment_data

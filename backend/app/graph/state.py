@@ -1,4 +1,5 @@
-from typing import TypedDict, Optional
+import operator
+from typing import Annotated, Optional, TypedDict
 
 
 class AnalysisState(TypedDict, total=False):
@@ -15,6 +16,6 @@ class AnalysisState(TypedDict, total=False):
     strategy_data: Optional[dict]
     report: Optional[str]
 
-    # Progress tracking
-    current_step: str
-    error: Optional[str]
+    # Accumulated across nodes; list reducer so parallel branches can
+    # each report errors without conflicting writes
+    errors: Annotated[list[str], operator.add]

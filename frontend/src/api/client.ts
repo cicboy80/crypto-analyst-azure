@@ -19,17 +19,6 @@ export async function startAnalysis(
   return data.thread_id;
 }
 
-export function createAnalysisStream(
-  threadId: string,
-  request: AnalysisRequest
-): EventSource {
-  const params = new URLSearchParams({
-    crypto_name: request.crypto_name,
-    currency: request.currency,
-    days: String(request.days),
-  });
-
-  return new EventSource(
-    `${API_BASE}/analysis/${threadId}/stream?${params.toString()}`
-  );
+export function createAnalysisStream(threadId: string): EventSource {
+  return new EventSource(`${API_BASE}/analysis/${threadId}/stream`);
 }
